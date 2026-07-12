@@ -140,8 +140,9 @@ function extractStreamCandidates(
     .sort(sortStreamCandidates);
 }
 
-function extractHlsUrl(playInfo: BilibiliPlayInfoData | undefined): string | null {
+export function extractHlsUrls(playInfo: BilibiliPlayInfoData | undefined): string[] {
   const streams = playInfo?.playurl_info?.playurl?.stream ?? [];
+  const urls: string[] = [];
 
   for (const protocolName of ['http_hls', 'http_stream']) {
     for (const formatName of ['ts', 'fmp4']) {
@@ -164,18 +165,16 @@ function extractHlsUrl(playInfo: BilibiliPlayInfoData | undefined): string | nul
           )
           .sort(sortStreamCandidates);
 
-        if (candidates[0]) {
-          return candidates[0].url;
-        }
+        urls.push(...candidates.map((candidate) => candidate.url));
 
-        if (format.master_url) {
-          return format.master_url;
+        if (format.master_url && candidates.length === 0) {
+          urls.push(format.master_url);
         }
       }
     }
   }
 
-  return null;
+  return [...new Set(urls)];
 }
 
 export async function GET(request: NextRequest) {
@@ -228,9 +227,9 @@ export async function GET(request: NextRequest) {
     }
 
     const flvCandidates = extractStreamCandidates(playInfoData.data, 'http_stream', 'flv');
-    const hlsUrl = extractHlsUrl(playInfoData.data);
+    const hlsUrls = extractHlsUrls(playInfoData.data);
 
-    if (!flvCandidates[0]?.url && !hlsUrl) {
+    if (!flvCandidates[0]?.url && !hlsUrls[0]) {
       return NextResponse.json(
         {
           error: 'Failed to fetch stream info',
@@ -246,7 +245,8 @@ export async function GET(request: NextRequest) {
       title: infoData.data?.title || 'Bilibili Live',
       live_status: 1,
       flv_url: flvCandidates[0]?.url || '',
-      hls_url: hlsUrl,
+      hls_url: hlsUrls[0] ?? null,
+      hls_backup_urls: hlsUrls.slice(1),
       backup_urls: flvCandidates.slice(1).map((candidate) => candidate.url),
       quality: playInfoData.data?.playurl_info?.playurl?.g_qn_desc ?? [],
       timestamp: Date.now(),

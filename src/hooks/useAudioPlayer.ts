@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAudioStore } from '@/store/audioStore';
 import { Station } from '@/lib/stations';
-import Hls from 'hls.js';
+import Hls, { type ErrorData } from 'hls.js';
 
 // flv.js 类型定义
 type FlvPlayer = {
@@ -52,6 +52,7 @@ interface BilibiliStreamInfo {
   live_status: number;
   flv_url: string;
   hls_url: string | null;
+  hls_backup_urls?: string[];
   backup_urls: string[];
   timestamp: number;
 }
@@ -177,14 +178,12 @@ export function useAudioPlayer() {
     const audio = audioRef.current;
     if (!audio) return false;
 
-    const proxyErrorMessage = '请关闭代理后刷新';
+    const repeatedNetworkErrorMessage = '直播源连接失败，请稍后重试';
     const transientErrorMessage = '加载失败，请刷新';
 
     // 统一的 Bilibili HLS 加载逻辑
     const loadBilibiliHls = async (hlsUrl: string): Promise<boolean> => {
       if (Hls.isSupported()) {
-        isLoadingBilibiliRef.current = false;
-
         if (flvPlayerRef.current) {
           try {
             flvPlayerRef.current.destroy();
@@ -211,21 +210,23 @@ export function useAudioPlayer() {
           let resolved = false;
           let timeoutId: number | null = null;
 
-          const handleManifestParsed = () => {
+          const finish = (result: boolean) => {
             if (resolved) return;
             resolved = true;
             if (timeoutId) clearTimeout(timeoutId);
             hls.off(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
-            resolve(true);
+            hls.off(Hls.Events.ERROR, handleInitialError);
+            resolve(result);
+          };
+
+          const handleManifestParsed = () => finish(true);
+          const handleInitialError = (_event: string, data: ErrorData) => {
+            if (data.fatal) finish(false);
           };
 
           hls.on(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
-          timeoutId = window.setTimeout(() => {
-            if (resolved) return;
-            resolved = true;
-            hls.off(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
-            resolve(false);
-          }, 3000);
+          hls.on(Hls.Events.ERROR, handleInitialError);
+          timeoutId = window.setTimeout(() => finish(false), 5000);
         });
 
         if (requestId !== loadRequestIdRef.current) return false;
@@ -236,12 +237,12 @@ export function useAudioPlayer() {
         }
 
         hlsRef.current = hls;
+        isLoadingBilibiliRef.current = false;
         return true;
       }
 
       if (audio.canPlayType('application/vnd.apple.mpegurl')) {
         // Native Safari HLS support
-        isLoadingBilibiliRef.current = false;
         audio.src = hlsUrl;
         audio.load();
         const canPlay = await new Promise<boolean>((resolve) => {
@@ -274,7 +275,7 @@ export function useAudioPlayer() {
             audio.removeEventListener('canplay', onCanPlay);
             audio.removeEventListener('error', onError);
             resolve(false);
-          }, 3000);
+          }, 5000);
         });
 
         if (requestId !== loadRequestIdRef.current) return false;
@@ -283,6 +284,7 @@ export function useAudioPlayer() {
           return false;
         }
 
+        isLoadingBilibiliRef.current = false;
         return true;
       }
 
@@ -338,13 +340,25 @@ export function useAudioPlayer() {
         return false;
       }
 
-      if (data.hls_url) {
-        console.log('[Player] Trying HLS stream first');
-        const hlsLoaded = await loadBilibiliHls(data.hls_url);
+      const hlsUrls = [data.hls_url, ...(data.hls_backup_urls ?? [])].filter(
+        (url): url is string => Boolean(url)
+      );
 
-        if (requestId !== loadRequestIdRef.current) {
-          console.log('[Player] Request expired after loading HLS');
-          return false;
+      if (hlsUrls.length > 0) {
+        console.log(`[Player] Trying ${hlsUrls.length} HLS stream candidate(s)`);
+        let hlsLoaded = false;
+
+        for (const hlsUrl of hlsUrls) {
+          hlsLoaded = await loadBilibiliHls(hlsUrl);
+
+          if (requestId !== loadRequestIdRef.current) {
+            console.log('[Player] Request expired after loading HLS');
+            return false;
+          }
+
+          if (hlsLoaded) {
+            break;
+          }
         }
 
         if (hlsLoaded) {
@@ -447,7 +461,7 @@ export function useAudioPlayer() {
           errorDetail === 'HttpStatusCodeInvalid';
         const isFetchException = errorDetail === 'Exception';
 
-        // Bilibili 代理环境常见 403：先按网络抖动处理，连续失败再提示关闭代理
+        // CDN 403 和 fetch 异常都可能由地址失效、地域路由或网络抖动造成。
         if (isNetworkError && (isStatusInvalid || isFetchException)) {
           const recoveryState = bilibiliRecoveryRef.current;
 
@@ -463,7 +477,7 @@ export function useAudioPlayer() {
               proxyHits: nextProxyHits,
               hlsRefreshCount: bilibiliRecoveryRef.current.hlsRefreshCount,
             };
-            setError(true, proxyErrorMessage);
+            setError(true, repeatedNetworkErrorMessage);
             setLoading(false);
             return;
           }
