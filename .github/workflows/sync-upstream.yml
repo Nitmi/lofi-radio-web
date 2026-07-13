@@ -31,7 +31,16 @@ jobs:
           git fetch upstream main
 
           if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "Fork is already up to date."
+            last_commit_at=$(git log -1 --format=%ct)
+            now=$(date +%s)
+
+            if (( now - last_commit_at < 2592000 )); then
+              echo "Fork is already up to date."
+              exit 0
+            fi
+
+            git commit --allow-empty -m "chore: keep upstream sync active"
+            git push origin HEAD:main
             exit 0
           fi
 
