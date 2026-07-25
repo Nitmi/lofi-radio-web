@@ -44,5 +44,10 @@ jobs:
             exit 0
           fi
 
-          git merge --no-edit upstream/main
+          fork_head=$(git rev-parse HEAD)
+          git merge --no-ff --no-commit upstream/main
+
+          # Keep fork-owned automation so GITHUB_TOKEN never pushes workflow changes.
+          git restore --source="$fork_head" --staged --worktree -- .github/workflows
+          git commit -m "Merge upstream main"
           git push origin HEAD:main
