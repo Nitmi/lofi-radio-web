@@ -39,15 +39,15 @@
     "indexnow": "npx tsx scripts/submit-indexnow.ts"
   },
   "overrides": {
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "next": {
       "sharp": "0.35.3"
     },
-    "js-yaml@4.2.0": "4.3.0",
-    "js-yaml@^4.1.0": "4.3.0",
+    "js-yaml@4.2.0": "4.3.1",
+    "js-yaml@^4.1.0": "4.3.1",
     "@babel/core@^7.24.4": "7.29.7",
-    "brace-expansion@^1.1.7": "1.1.16",
-    "brace-expansion@^5.0.5": "5.0.8"
+    "brace-expansion@^1.1.7": "1.1.18",
+    "brace-expansion@^5.0.5": "5.0.9"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",
