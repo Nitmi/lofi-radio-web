@@ -372,8 +372,7 @@ lofi-radio-web/
 │   │   ├── robots.ts            # robots.txt 路由
 │   │   ├── sitemap.ts           # sitemap.xml 路由
 │   │   └── api/                 # API 路由
-│   │       ├── bilibili-stream/ # B站直播流解析
-│   │       └── stations/        # 电台同步 API
+│   │       └── bilibili-stream/ # B站直播流解析
 │   ├── components/              # 组件
 │   │   ├── lofi/                # Lofi 相关组件
 │   │   │   └── floating-player.tsx  # 浮动播放器
