@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAudioStore } from '@/store/audioStore';
+import { createHlsRecoveryController } from '@/lib/hls-recovery';
 import { Station } from '@/lib/stations';
 import Hls, { type ErrorData } from 'hls.js';
 
@@ -92,6 +93,8 @@ export function useAudioPlayer() {
   // 请求版本控制 - 解决竞态条件
   const loadRequestIdRef = useRef(0);
   const currentLoadingIdRef = useRef<string | null>(null);
+  // 记录最近一次加载使用的重试令牌，令牌变化时强制重载当前电台
+  const lastLoadTokenRef = useRef<number | null>(null);
   // 标记当前是否正在加载 Bilibili 流（flv.js 会处理错误）
   const isLoadingBilibiliRef = useRef(false);
   // Bilibili 403 自动恢复状态（每次请求只尝试一次）
@@ -110,6 +113,7 @@ export function useAudioPlayer() {
     volume,
     isMuted,
     userWantsPlay,
+    stationLoadToken,
     setPlaying,
     setLoading,
     setError,
@@ -210,11 +214,26 @@ export function useAudioPlayer() {
         const hls = new Hls({ enableWorker: true, maxBufferLength: 30 });
         hls.loadSource(hlsUrl);
         hls.attachMedia(audio);
+        // settled 之前的致命错误属于「初始加载失败」，
+        // 由外层的候选地址循环处理（换下一个地址），这里不重复介入
+        let settled = false;
+        const recovery = createHlsRecoveryController();
+        hls.on(Hls.Events.FRAG_BUFFERED, () => recovery.resetOnProgress());
         hls.on(Hls.Events.ERROR, (_, data) => {
-          if (requestId !== loadRequestIdRef.current) return;
-          if (data.fatal) {
-            setLoading(false);
+          if (requestId !== loadRequestIdRef.current || !data.fatal || !settled) return;
+          // hls.js 官方恢复策略：网络错误重新拉流、媒体错误恢复解码，
+          // 各自连续失败 3 次后才收敛为用户可见的错误提示
+          const action = recovery.next(data.type);
+          if (action === 'restart-load') {
+            hls.startLoad();
+            return;
           }
+          if (action === 'recover-media') {
+            hls.recoverMediaError();
+            return;
+          }
+          setError(true, '直播中断，请重试');
+          setLoading(false);
         });
 
         const parsed = await new Promise<boolean>((resolve) => {
@@ -247,6 +266,8 @@ export function useAudioPlayer() {
           return false;
         }
 
+        // 进入播放阶段，之后的致命错误走恢复/报错逻辑
+        settled = true;
         hlsRef.current = hls;
         isLoadingBilibiliRef.current = false;
         return true;
@@ -673,14 +694,14 @@ export function useAudioPlayer() {
           
           hls.loadSource(station.url);
           hls.attachMedia(audio);
-          
+
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             // 检查请求是否有效
             if (requestId !== loadRequestIdRef.current) {
               console.log('[Player] Stale HLS manifest, ignoring');
               return;
             }
-            
+
             // 从 store 读取最新的用户播放意图
             const latestUserWantsPlay = useAudioStore.getState().userWantsPlay;
             if (latestUserWantsPlay) {
@@ -689,14 +710,26 @@ export function useAudioPlayer() {
               setLoading(false);
             }
           });
-          
+
+          // 播放中的致命错误先按 hls.js 官方策略自动恢复（网络错误重拉流、
+          // 媒体错误恢复解码；两类错误各自连续失败 3 次后才提示用户）
+          const recovery = createHlsRecoveryController();
+          hls.on(Hls.Events.FRAG_BUFFERED, () => recovery.resetOnProgress());
           hls.on(Hls.Events.ERROR, (_, data) => {
             console.error('[Player] HLS error:', data.type, data.details);
-            if (requestId !== loadRequestIdRef.current) return;
-            
-            if (data.fatal) {
-              setError(true, '加载失败，请刷新');
+            if (requestId !== loadRequestIdRef.current || !data.fatal) return;
+
+            const action = recovery.next(data.type);
+            if (action === 'restart-load') {
+              hls.startLoad();
+              return;
             }
+            if (action === 'recover-media') {
+              hls.recoverMediaError();
+              return;
+            }
+
+            setError(true, '播放中断，请重试');
           });
           
           hlsRef.current = hls;
@@ -892,15 +925,19 @@ export function useAudioPlayer() {
     };
   }, []);
 
-  // 监听电台变化
+  // 监听电台变化 / 重试令牌变化
   useEffect(() => {
     if (!currentStation || !audioRef.current) return;
-    
-    // 只有电台 ID 真正改变时才加载
-    if (currentLoadingIdRef.current !== currentStation.id) {
+
+    // 电台 ID 真正改变、或用户触发了重试（令牌变化）时才（重新）加载
+    if (
+      currentLoadingIdRef.current !== currentStation.id ||
+      lastLoadTokenRef.current !== stationLoadToken
+    ) {
+      lastLoadTokenRef.current = stationLoadToken;
       loadStation(currentStation);
     }
-  }, [currentStation?.id, loadStation]);
+  }, [currentStation?.id, stationLoadToken, loadStation]);
 
   // 监听用户播放意图 - 订阅 userWantsPlay 变化
   useEffect(() => {

@@ -333,8 +333,7 @@ lofi-radio-web/
 │   │   ├── robots.ts            # robots.txt route
 │   │   ├── sitemap.ts           # sitemap.xml route
 │   │   └── api/                 # API routes
-│   │       ├── bilibili-stream/ # Bilibili live stream parsing
-│   │       └── stations/        # Station synchronization API
+│   │       └── bilibili-stream/ # Bilibili live stream parsing
 │   ├── components/              # Components
 │   │   ├── lofi/                # Lofi-related components
 │   │   │   └── floating-player.tsx  # Floating player

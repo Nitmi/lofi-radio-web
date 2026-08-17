@@ -68,8 +68,8 @@
   --card-foreground: #fafafa;
   --popover: #141416;
   --popover-foreground: #fafafa;
-  --primary: #a78bfa;
-  --primary-foreground: #0a0a0c;
+  --primary: #7c3aed;
+  --primary-foreground: #fafafa;
   --secondary: #1f1f23;
   --secondary-foreground: #fafafa;
   --muted: #1f1f23;
@@ -79,7 +79,7 @@
   --destructive: #f87171;
   --border: #27272a;
   --input: #27272a;
-  --ring: #a78bfa;
+  --ring: #c4b5fd;
 }
 
 @layer base {
@@ -126,11 +126,11 @@
 
 /* Dark mode scrollbar */
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(167, 139, 250, 0.25);
+  background: rgba(139, 92, 246, 0.25);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(167, 139, 250, 0.4);
+  background: rgba(139, 92, 246, 0.4);
 }
 
 /* Selection */
@@ -139,7 +139,7 @@
 }
 
 .dark ::selection {
-  background: rgba(167, 139, 250, 0.35);
+  background: rgba(139, 92, 246, 0.35);
 }
 
 /* Hide scrollbar utility */
@@ -161,7 +161,7 @@
 }
 
 .dark .gradient-text {
-  background: linear-gradient(135deg, #a78bfa 0%, #e879f9 50%, #fb7185 100%);
+  background: linear-gradient(135deg, #8b5cf6 0%, #e879f9 50%, #fb7185 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -173,7 +173,7 @@
 }
 
 .dark .glow-primary {
-  box-shadow: 0 0 50px rgba(167, 139, 250, 0.2);
+  box-shadow: 0 0 50px rgba(139, 92, 246, 0.2);
 }
 
 .glow-sm {
@@ -181,7 +181,7 @@
 }
 
 .dark .glow-sm {
-  box-shadow: 0 0 25px rgba(167, 139, 250, 0.12);
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.12);
 }
 
 /* Glass Effect - 更精致的玻璃效果 */
@@ -231,6 +231,16 @@
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* 播放按钮播放中向外扩散的光环 */
+@keyframes ring-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.animate-ring-pulse {
+  animation: ring-pulse 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
 @keyframes shimmer {
@@ -343,8 +353,8 @@
 
 .dark .grid-pattern {
   background-image: 
-    linear-gradient(rgba(167, 139, 250, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(167, 139, 250, 0.02) 1px, transparent 1px);
+    linear-gradient(rgba(139, 92, 246, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 92, 246, 0.02) 1px, transparent 1px);
 }
 
 /* Dot Pattern Background */
@@ -354,7 +364,7 @@
 }
 
 .dark .dot-pattern {
-  background-image: radial-gradient(rgba(167, 139, 250, 0.1) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(139, 92, 246, 0.1) 1px, transparent 1px);
 }
 
 /* Noise Texture Overlay - 增加质感 */
@@ -378,7 +388,7 @@
 }
 
 .dark .focus-ring:focus-visible {
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.5);
+  box-shadow: 0 0 0 2px rgba(196, 181, 253, 0.7);
 }
 
 /* Button Press Effect */
@@ -409,7 +419,7 @@
 }
 
 .dark .gradient-border::before {
-  background: linear-gradient(135deg, #a78bfa, #e879f9, #fb7185);
+  background: linear-gradient(135deg, #8b5cf6, #e879f9, #fb7185);
 }
 
 /* Text Glow */
@@ -418,7 +428,7 @@
 }
 
 .dark .text-glow {
-  text-shadow: 0 0 25px rgba(167, 139, 250, 0.4);
+  text-shadow: 0 0 25px rgba(139, 92, 246, 0.4);
 }
 
 /* Card Hover Effect */

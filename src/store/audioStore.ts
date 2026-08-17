@@ -18,6 +18,10 @@ interface AudioState {
   isMuted: boolean;
   currentStation: Station | null;
   stationIndex: number;
+  // 重试令牌：+1 强制 useAudioPlayer 重新加载当前电台。
+  // 只改 currentStation 无法触发重载（id 未变化时加载 effect 会跳过），
+  // 出错后播放按钮/重试按钮需要靠它恢复同一电台。
+  stationLoadToken: number;
   
   // 专注时间 - 改用时间戳累计
   focusStartTime: number | null;  // 开始播放时的时间戳
@@ -40,6 +44,7 @@ interface AudioState {
   selectStationById: (id: string) => void;
   nextStation: () => void;
   prevStation: () => void;
+  retryStation: () => void;
   
   // 专注时间
   startFocusTime: () => void;
@@ -82,6 +87,7 @@ export const useAudioStore = create<AudioState>()(
       isMuted: false,
       currentStation: stations[0],
       stationIndex: 0,
+      stationLoadToken: 0,
       focusStartTime: null,
       accumulatedFocusTime: 0,
       focusDate: getCurrentDate(),
@@ -208,6 +214,15 @@ export const useAudioStore = create<AudioState>()(
         const newIndex = (stationIndex - 1 + stations.length) % stations.length;
         get().selectStation(newIndex);
       },
+
+      // 出错后的恢复入口：保持当前电台不变，仅递增令牌强制重新加载
+      retryStation: () => set({
+        stationLoadToken: get().stationLoadToken + 1,
+        userWantsPlay: true,
+        isLoading: true,
+        hasError: false,
+        errorMessage: null
+      }),
       
       // 开始专注计时
       startFocusTime: () => {

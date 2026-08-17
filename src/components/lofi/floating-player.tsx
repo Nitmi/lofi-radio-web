@@ -133,7 +133,7 @@ const VolumeSlider = memo(({
       <button
         onClick={onMuteToggle}
         aria-label={isMuted || volume === 0 ? '取消静音' : '静音'}
-        className="flex-shrink-0 p-2 rounded-xl hover:bg-white/5 transition-colors"
+        className="flex-shrink-0 p-2 rounded-xl hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
       >
         {isMuted || volume === 0 ? (
           <VolumeX className="w-5 h-5 text-white/40" />
@@ -141,11 +141,11 @@ const VolumeSlider = memo(({
           <Volume2 className="w-5 h-5 text-white/60" />
         )}
       </button>
-      
+
       <div className="flex-1 relative h-8 flex items-center group">
         {/* 背景轨道 */}
-        <div className="absolute inset-x-0 h-1.5 rounded-full bg-white/10 pointer-events-none" />
-        
+        <div className="absolute inset-x-0 h-1.5 rounded-full bg-white/10 pointer-events-none transition-colors duration-200 group-hover:bg-white/15" />
+
         {/* 已填充轨道 */}
         <div
           className="absolute left-0 h-1.5 rounded-full pointer-events-none transition-all duration-75"
@@ -154,7 +154,7 @@ const VolumeSlider = memo(({
             width: `${displayVolume * 100}%`
           }}
         />
-        
+
         {/* 原生 range input */}
         <input
           type="range"
@@ -166,10 +166,10 @@ const VolumeSlider = memo(({
           aria-label="音量"
           className="absolute inset-x-0 w-full h-full opacity-0 cursor-pointer appearance-none touch-pan-x z-10"
         />
-        
+
         {/* 自定义滑块圆点 */}
         <div
-          className="absolute w-4 h-4 rounded-full pointer-events-none transition-all duration-75"
+          className="absolute w-4 h-4 rounded-full pointer-events-none transition-all duration-150 group-hover:scale-110 group-active:scale-95"
           style={{
             background: 'linear-gradient(135deg, #fff, #e0e0e0)',
             left: `calc(${displayVolume * 100}% - 8px)`,
@@ -394,17 +394,20 @@ const FullScreenPlayer = memo(({ onClose, remainingSeconds, suppressVinylTapUnti
     isPlaying, isLoading, currentStation, volume, isMuted, userWantsPlay,
     hasError, errorMessage,
     requestPlay, requestPause, toggleMute, setVolume,
-    nextStation, prevStation, selectStationById,
+    nextStation, prevStation, selectStationById, retryStation,
   } = useAudioStore();
-  
-  // 切换播放状态
+
+  // 切换播放状态；出错状态下点播放 = 重试当前电台，
+  // 否则只会清掉错误提示但音频元素仍处于失败态，永远播不响
   const togglePlay = useCallback(() => {
-    if (userWantsPlay) {
+    if (hasError) {
+      retryStation();
+    } else if (userWantsPlay) {
       requestPause();
     } else {
       requestPlay();
     }
-  }, [userWantsPlay, requestPlay, requestPause]);
+  }, [hasError, userWantsPlay, requestPlay, requestPause, retryStation]);
   
   const { focusTime } = useFocusTimer();
   const { sleepTimerMinutes, sleepTimerEndTime, setSleepTimer } = useAudioStore();
@@ -446,6 +449,9 @@ const FullScreenPlayer = memo(({ onClose, remainingSeconds, suppressVinylTapUnti
   
   const handleStationSelect = useCallback((station: Station) => {
     selectStationById(station.id);
+    // 移动端底部弹窗选台后收起，露出播放器反馈当前台的变化；
+    // 桌面端是常驻侧栏，showStationList 本来就是 false，不受影响
+    setShowStationList(false);
   }, [selectStationById]);
   
   return (
@@ -522,10 +528,18 @@ const FullScreenPlayer = memo(({ onClose, remainingSeconds, suppressVinylTapUnti
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="mb-4 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20"
+                className="mb-4 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20"
               >
                 <p className="text-red-400 text-sm text-center">{errorMessage}</p>
-                <p className="text-red-400/60 text-xs text-center mt-1">试试切换到其他电台</p>
+                <div className="flex items-center justify-center gap-3 mt-1.5">
+                  <button
+                    onClick={retryStation}
+                    className="text-xs font-medium px-3 py-1 rounded-full bg-red-500/15 hover:bg-red-500/25 text-red-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60"
+                  >
+                    重试当前电台
+                  </button>
+                  <span className="text-red-400/60 text-xs">或切换到其他电台</span>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -534,19 +548,29 @@ const FullScreenPlayer = memo(({ onClose, remainingSeconds, suppressVinylTapUnti
           <div className="flex items-center justify-center gap-8 mb-6">
             <button
               onClick={prevStation}
-              className="w-12 h-12 rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.12] transition-all duration-200 hover:scale-105"
+              aria-label="上一首"
+              className="w-12 h-12 rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.12] transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               <SkipBack className="w-5 h-5 text-white/60" />
             </button>
-            
+
             <button
               onClick={togglePlay}
-              className="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center relative overflow-hidden transition-transform duration-200 hover:scale-105"
-              style={{ 
+              aria-label={isPlaying ? '暂停' : '播放'}
+              className="w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center relative transition-transform duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+              style={{
                 background: `linear-gradient(135deg, ${stationColor}, ${stationColor}cc)`,
                 boxShadow: `0 8px 32px ${stationColor}40`
               }}
             >
+              {/* 播放中向外扩散的柔和光环（reduced-motion 下由全局规则停用） */}
+              {isPlaying && !isLoading && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-full animate-ring-pulse pointer-events-none"
+                  style={{ boxShadow: `0 0 0 3px ${stationColor}55` }}
+                />
+              )}
               {isLoading ? (
                 <Loader2 className="w-7 h-7 text-white animate-spin" />
               ) : isPlaying ? (
@@ -555,10 +579,11 @@ const FullScreenPlayer = memo(({ onClose, remainingSeconds, suppressVinylTapUnti
                 <Play className="w-7 h-7 text-white ml-0.5" />
               )}
             </button>
-            
+
             <button
               onClick={nextStation}
-              className="w-12 h-12 rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.12] transition-all duration-200 hover:scale-105"
+              aria-label="下一首"
+              className="w-12 h-12 rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.12] transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
               <SkipForward className="w-5 h-5 text-white/60" />
             </button>
@@ -799,14 +824,16 @@ FullScreenPlayer.displayName = 'FullScreenPlayer';
 
 // ==================== 迷你灵动岛 ====================
 const MiniPlayer = memo(({ onExpand }: { onExpand: () => void }) => {
-  const { isPlaying, currentStation, isLoading, userWantsPlay, hasError, requestPlay, requestPause, nextStation, prevStation } = useAudioStore();
+  const { isPlaying, currentStation, isLoading, userWantsPlay, hasError, requestPlay, requestPause, nextStation, prevStation, retryStation } = useAudioStore();
   const { focusTime } = useFocusTimer();
   const stationColor = hasError ? '#EF4444' : (currentStation?.color || '#8B5CF6');
-  
+
+  // 出错时点播放 = 重试当前电台，原因同 FullScreenPlayer.togglePlay
   const togglePlay = useCallback(() => {
-    if (userWantsPlay) requestPause();
+    if (hasError) retryStation();
+    else if (userWantsPlay) requestPause();
     else requestPlay();
-  }, [userWantsPlay, requestPlay, requestPause]);
+  }, [hasError, userWantsPlay, requestPlay, requestPause, retryStation]);
   
   return (
     <div className="relative cursor-grab active:cursor-grabbing select-none group/island">
@@ -1108,11 +1135,14 @@ export function FloatingPlayer() {
   
   const handleDragEnd = useCallback((_: never, info: PanInfo) => {
     setIsDragging(false);
+    // info.offset 是指针的原始位移，拖到边界被约束截断时会大于实际视觉位移，
+    // 直接累加会把岛定位到边界外（且只在窗口 resize 时才会被重新钳回来），
+    // 所以这里按当前约束手动夹紧
     setPosition(prev => ({
-      x: prev.x + info.offset.x,
-      y: prev.y + info.offset.y
+      x: Math.min(constraints.right, Math.max(constraints.left, prev.x + info.offset.x)),
+      y: Math.min(constraints.bottom, Math.max(constraints.top, prev.y + info.offset.y))
     }));
-  }, []);
+  }, [constraints]);
   
   return (
     <>

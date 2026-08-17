@@ -198,7 +198,7 @@ const NavBar = memo(({ isDark, isPlaying, currentStation, stationColor, onThemeT
 
       <motion.button onClick={onThemeToggle}
         className={cn("w-7 h-7 rounded-full flex items-center justify-center transition-colors", isDark ? "text-white/60 hover:text-white hover:bg-white/10" : "text-zinc-500 hover:text-zinc-900 hover:bg-black/5")}
-        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title={isDark ? '切换亮色' : '切换暗色'}>
+        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title={isDark ? '切换亮色' : '切换暗色'} aria-label={isDark ? '切换亮色主题' : '切换暗色主题'}>
         <AnimatePresence mode="wait">
           {isDark ? (
             <motion.div key="sun" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.15 }}><Sun className="w-3.5 h-3.5" /></motion.div>
@@ -272,7 +272,9 @@ const StationCard = memo(({ station, isDark, isActive, isPlaying, onClick }: {
     className={cn(
       "relative p-4 rounded-xl cursor-pointer overflow-hidden group w-full text-left",
       "focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2",
-      isDark ? "bg-white/[0.03] hover:bg-white/[0.05] focus-visible:ring-offset-zinc-950" : "bg-white hover:shadow-lg focus-visible:ring-offset-gray-50"
+      isDark
+        ? "bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.05] focus-visible:ring-offset-zinc-950"
+        : "bg-white hover:shadow-lg border border-black/[0.04] focus-visible:ring-offset-gray-50"
     )}
     style={{ borderLeft: `3px solid ${isActive ? station.color : 'transparent'}` }}
   >
@@ -313,7 +315,7 @@ StationCard.displayName = 'StationCard';
 
 // ==================== 主页 ====================
 export default function Home() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { setTheme, resolvedTheme } = useTheme();
   const mounted = useMounted();
   const [showMobileHint, setShowMobileHint] = useState(false);
 
@@ -339,8 +341,17 @@ export default function Home() {
     const s = stations.filter(s => s.scene === sceneId);
     if (s.length > 0) { setSelectedCategory(sceneId); selectStationById(s[0].id); setMiniMode(false); }
   }, [selectStationById, setMiniMode, setSelectedCategory]);
-  const handleThemeToggle = useCallback(() => { setTheme(theme === 'dark' ? 'light' : 'dark'); }, [theme, setTheme]);
-  const togglePlay = useCallback(() => { if (userWantsPlay) requestPause(); else requestPlay(); }, [userWantsPlay, requestPlay, requestPause]);
+  // 用 resolvedTheme 而不是 theme：theme 可能是 'system'（用户未手动选过），
+  // 此时系统已是深色、再设成 'dark' 视觉上没有任何变化，第一次点击等于失效
+  const handleThemeToggle = useCallback(() => { setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'); }, [resolvedTheme, setTheme]);
+  const hasError = useAudioStore((s) => s.hasError);
+  const retryStation = useAudioStore((s) => s.retryStation);
+  const togglePlay = useCallback(() => {
+    // 出错时点播放 = 重试当前电台，原因同播放器内的处理
+    if (hasError) retryStation();
+    else if (userWantsPlay) requestPause();
+    else requestPlay();
+  }, [hasError, retryStation, userWantsPlay, requestPlay, requestPause]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -499,7 +510,15 @@ export default function Home() {
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full sm:w-auto">
                   <Button size="lg" onClick={() => togglePlay()}
                     className="w-full sm:w-auto rounded-full px-7 h-12 text-base font-semibold shadow-xl"
-                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #D946EF)', boxShadow: '0 8px 32px rgba(139,92,246,0.35)' }}>
+                    style={{
+                      background: isDark
+                        ? 'linear-gradient(135deg, #A5B4FC 0%, #F0ABFC 100%)'
+                        : 'linear-gradient(135deg, #8B5CF6, #D946EF)',
+                      boxShadow: isDark
+                        ? '0 8px 28px rgba(196,181,253,0.28)'
+                        : '0 8px 32px rgba(139,92,246,0.35)',
+                      color: isDark ? '#4c1d95' : undefined,
+                    }}>
                     {isPlaying ? <><Pause className="w-5 h-5 mr-2" /><span>正在播放</span></> : <><Play className="w-5 h-5 mr-2" /><span>开始播放</span></>}
                   </Button>
                 </motion.div>
@@ -675,7 +694,15 @@ export default function Home() {
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="relative inline-block">
                 <Button size="lg" onClick={() => { togglePlay(); if (!userWantsPlay) setMiniMode(false); }}
                   className="rounded-full px-8 h-12 text-base font-semibold shadow-xl"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #D946EF)', boxShadow: '0 8px 32px rgba(139,92,246,0.4)' }}>
+                  style={{
+                    background: isDark
+                      ? 'linear-gradient(135deg, #A5B4FC 0%, #F0ABFC 100%)'
+                      : 'linear-gradient(135deg, #8B5CF6, #D946EF)',
+                    boxShadow: isDark
+                      ? '0 8px 28px rgba(196,181,253,0.28)'
+                      : '0 8px 32px rgba(139,92,246,0.4)',
+                    color: isDark ? '#4c1d95' : undefined,
+                  }}>
                   {userWantsPlay ? <><Pause className="w-5 h-5 mr-2" />{isLoading ? '加载中...' : '正在播放'}</> : <><Play className="w-5 h-5 mr-2" />立即开始</>}
                 </Button>
               </motion.div>
@@ -761,17 +788,17 @@ export default function Home() {
                 <Github className="w-4 h-4" />
                 <span>GitHub</span>
               </a>
-              
+
               <span aria-hidden="true" className={cn(isDark ? "text-white/20" : "text-zinc-300")}>·</span>
-              
+
               <span className={cn(
                 "font-semibold",
                 isDark ? "text-violet-400" : "text-violet-600"
               )}>
                 Made with ❤️ by{' '}
-                <a 
-                  href="https://blog.88lin.eu.org/" 
-                  target="_blank" 
+                <a
+                  href="https://blog.88lin.eu.org/"
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="hover:underline"
                 >
