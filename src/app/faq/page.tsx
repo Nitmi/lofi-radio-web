@@ -6,7 +6,7 @@ import { homepageFaqs, howToStart, siteLastUpdated } from "@/lib/seo-content";
 
 export const metadata: Metadata = buildPageMetadata({
   title: `Lofi Radio 常见问题 - ${homepageFaqs.length} 个使用问题解答`,
-  description: `Lofi Radio 的 ${homepageFaqs.length} 个常见问题：是否收费与注册、电台数量与风格、学习编程助眠该选哪个电台、播放失败的排查办法、睡眠定时用法、隐私与版权说明，以及开源与自部署方式。`,
+  description: `Lofi Radio 的 ${homepageFaqs.length} 个常见问题：是否收费与注册、电台数量与风格、学习编程助眠该选哪个电台、播放失败的排查办法、睡眠定时用法，以及开源与自部署方式。`,
   path: pagePaths.faq,
   keywords: [
     "lofi radio 常见问题",
@@ -26,7 +26,7 @@ export default function FaqPage() {
       <ContentShell
         current={pagePaths.faq}
         title="Lofi Radio 常见问题"
-        lead={`这里汇总了使用 Lofi Radio 时最常被问到的 ${homepageFaqs.length} 个问题：收费与注册、电台数量与风格、不同场景该选哪个电台、播放失败的排查办法、睡眠定时用法、隐私与版权，以及开源自部署。所有答案都在本页直接展开，无需点击。`}
+        lead={`这里汇总了使用 Lofi Radio 时最常被问到的 ${homepageFaqs.length} 个问题：收费与注册、电台数量与风格、不同场景该选哪个电台、播放失败的排查办法、睡眠定时用法，以及开源自部署。所有答案都在本页直接展开，无需点击。`}
         updated={siteLastUpdated}
       >
         <section aria-labelledby="how-to-start">
@@ -53,11 +53,14 @@ export default function FaqPage() {
                 key={faq.question}
                 open
                 id={`faq-${index + 1}`}
-                className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3 sm:px-6 sm:py-4 dark:border-white/[0.08] dark:bg-zinc-900/40"
+                className="group rounded-2xl border border-black/[0.06] bg-white px-4 py-3 sm:px-6 sm:py-4 dark:border-white/[0.08] dark:bg-zinc-900/40"
               >
-                <summary className="cursor-pointer list-none text-base font-semibold marker:hidden">
-                  <span className="mr-2 text-violet-600 dark:text-violet-400">Q{index + 1}.</span>
-                  {faq.question}
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-base font-semibold marker:hidden [&::-webkit-details-marker]:hidden">
+                  <span>
+                    <span className="mr-2 text-violet-600 dark:text-violet-400">Q{index + 1}.</span>
+                    {faq.question}
+                  </span>
+                  <span aria-hidden="true" className="shrink-0 text-zinc-400 transition-transform duration-200 group-open:rotate-90 dark:text-zinc-500">›</span>
                 </summary>
                 <p className="mt-3 leading-8 text-zinc-600 dark:text-zinc-300">{faq.answer}</p>
               </details>

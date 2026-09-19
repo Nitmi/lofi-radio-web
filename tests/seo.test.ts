@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import nextConfig from '../next.config';
 import { buildLlmsFullTxt, buildLlmsTxt, buildPricingMarkdown } from '../src/lib/llms';
 import {
   buildHomepageSchema,
   buildRobotsConfig,
   buildSiteSchema,
   buildSitemapEntries,
+  buildStationEntities,
+  serializeJsonLd,
   siteConfig,
 } from '../src/lib/seo';
-import { homepageFaqs, siteLastUpdated } from '../src/lib/seo-content';
+import { homepageFaqs, sceneComparison, siteLastUpdated } from '../src/lib/seo-content';
 import { getSceneList, stations } from '../src/lib/stations';
 
 test('sitemap only lists indexable pages and every URL is absolute', () => {
@@ -65,8 +68,6 @@ test('homepage JSON-LD is serialisable and covers the core entities', () => {
 
   const types = schema['@graph'].map((node) => node['@type']);
   for (const expected of [
-    'Organization',
-    'WebSite',
     'WebPage',
     'SoftwareApplication',
     'ItemList',
@@ -74,6 +75,9 @@ test('homepage JSON-LD is serialisable and covers the core entities', () => {
     'BreadcrumbList',
   ]) {
     assert.ok(types.includes(expected), `首页 JSON-LD 缺少 ${expected}`);
+  }
+  for (const forbidden of ['Organization', 'WebSite']) {
+    assert.ok(!types.includes(forbidden), `页面级 schema 不应再重复 ${forbidden}`);
   }
 });
 
@@ -131,6 +135,18 @@ test('every station belongs to exactly one scene bucket in the directory', () =>
   }
 });
 
+test('scene comparison only names real stations and scenes', () => {
+  const knownScenes = new Set(getSceneList().map((scene) => scene.scene));
+  const knownStations = new Set(stations.map((station) => station.name));
+
+  for (const row of sceneComparison.rows) {
+    assert.ok(knownScenes.has(row.scene), `对照表出现了不存在的场景：${row.scene}`);
+    for (const name of row.picks.split('、').map((item) => item.trim()).filter(Boolean)) {
+      assert.ok(knownStations.has(name), `对照表推荐了不存在的电台：${name}`);
+    }
+  }
+});
+
 test('layout-level schema stays page-agnostic', () => {
   const types = (buildSiteSchema()['@graph'] as { '@type': string }[]).map((n) => n['@type']);
 
@@ -138,5 +154,69 @@ test('layout-level schema stays page-agnostic', () => {
   // 页面级节点一旦进入 layout，每个子页面都会多声明一份「自己是首页」
   for (const forbidden of ['WebPage', 'CollectionPage', 'FAQPage', 'AboutPage', 'ItemList']) {
     assert.ok(!types.includes(forbidden), `站点级 schema 不应包含 ${forbidden}`);
+  }
+});
+
+test('inline JSON-LD cannot break out of the script element', () => {
+  const json = serializeJsonLd({ text: '</script><script>alert(1)</script>' });
+
+  assert.ok(!json.includes('<'), 'serializeJsonLd 必须把 < 全部转义');
+  assert.ok(!json.includes('</script'), '未转义的 </script 会提前结束脚本块');
+  assert.deepEqual(JSON.parse(json), { text: '</script><script>alert(1)</script>' });
+});
+
+test('robots host is a bare hostname, not a URL', () => {
+  const host = buildRobotsConfig().host!;
+
+  assert.equal(host, new URL(siteConfig.url).host);
+  assert.ok(!host.startsWith('http'), `Host 指令要裸主机名，实际为 ${host}`);
+});
+
+test('mutable files are not served with immutable caching', async () => {
+  const rules = await nextConfig.headers!();
+  const cacheControl = (source: string) => {
+    const rule = rules.find((entry) => entry.source === source);
+    assert.ok(rule, `next.config.ts 缺少 ${source} 的缓存规则`);
+    const header = rule!.headers.find((h) => h.key.toLowerCase() === 'cache-control');
+    assert.ok(header, `${source} 没有 Cache-Control`);
+    return header!.value;
+  };
+
+  // manifest.json 一改，已安装 PWA 的用户要等缓存过期才拿得到新版
+  assert.ok(
+    !cacheControl('/manifest.json').includes('immutable'),
+    'manifest.json 不能用 immutable 长缓存',
+  );
+
+  const mutable = ['/llms.txt', '/llms-full.txt', '/pricing.md', '/robots.txt', '/sitemap.xml'];
+  for (const path of mutable) {
+    const value = cacheControl(path);
+    const swr = /stale-while-revalidate=(\d+)/.exec(value);
+    assert.ok(swr, `${path} 缺少 stale-while-revalidate`);
+    assert.ok(
+      Number(swr![1]) <= 86_400,
+      `${path} 的陈旧期过长：${swr![1]} 秒，抓取器会读到过期的站点地图`,
+    );
+  }
+
+  assert.ok(cacheControl('/icon-192.png').includes('immutable'), '图标应保持长缓存');
+});
+
+test('bilibili live rooms are not described as audio streams', () => {
+  const entities = buildStationEntities();
+  const bilibili = stations.find((station) => station.type === 'bilibili');
+  assert.ok(bilibili, '数据集里应该存在 bilibili 类型的电台');
+
+  const node = entities.find((entry) => entry.item.identifier === bilibili!.id);
+  assert.ok(node, 'schema 里找不到 bilibili 电台实体');
+  assert.equal(node!.item.url, bilibili!.url, '直播间地址仍应保留在 url 上');
+  assert.ok(!('audio' in node!.item), '直播间页面地址不应被声明成 AudioObject.contentUrl');
+
+  for (const station of stations.filter((entry) => entry.type !== 'bilibili')) {
+    const direct = entities.find((entry) => entry.item.identifier === station.id);
+    assert.ok(
+      direct && 'audio' in direct.item,
+      `${station.name} 是直连音频流，应当声明 audio 子对象`,
+    );
   }
 });
