@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { HlsCandidate } from '@/lib/hls-candidates';
 
 export const runtime = 'nodejs';
 
@@ -64,6 +65,10 @@ const BILIBILI_HEADERS = {
   Accept: 'application/json, text/plain, */*',
   'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 };
+
+// 电台只需要声音，优先请求流畅档，避免主动拉取原画视频。
+// B 站可能回退到更高的 current_qn；qn=80 不代表纯音频或保证低码率。
+const PREFERRED_QN = 80;
 
 async function fetchJson<T>(url: string, timeoutMs = 12000): Promise<T> {
   const controller = new AbortController();
@@ -140,9 +145,9 @@ function extractStreamCandidates(
     .sort(sortStreamCandidates);
 }
 
-export function extractHlsUrls(playInfo: BilibiliPlayInfoData | undefined): string[] {
+export function extractHlsCandidates(playInfo: BilibiliPlayInfoData | undefined): HlsCandidate[] {
   const streams = playInfo?.playurl_info?.playurl?.stream ?? [];
-  const urls: string[] = [];
+  const urls = new Map<string, HlsCandidate>();
 
   for (const protocolName of ['http_hls', 'http_stream']) {
     for (const formatName of ['ts', 'fmp4']) {
@@ -165,16 +170,26 @@ export function extractHlsUrls(playInfo: BilibiliPlayInfoData | undefined): stri
           )
           .sort(sortStreamCandidates);
 
-        urls.push(...candidates.map((candidate) => candidate.url));
+        for (const candidate of candidates) {
+          if (!urls.has(candidate.url)) {
+            urls.set(candidate.url, { url: candidate.url, format: formatName, codec: candidate.codecName });
+          }
+        }
 
         if (format.master_url && candidates.length === 0) {
-          urls.push(format.master_url);
+          if (!urls.has(format.master_url)) {
+            urls.set(format.master_url, { url: format.master_url, format: formatName });
+          }
         }
       }
     }
   }
 
-  return [...new Set(urls)];
+  return [...urls.values()];
+}
+
+export function extractHlsUrls(playInfo: BilibiliPlayInfoData | undefined): string[] {
+  return extractHlsCandidates(playInfo).map(candidate => candidate.url);
 }
 
 // room_id 会被拼进上游 URL，必须先确认它只是一串数字，
@@ -197,7 +212,7 @@ export async function GET(request: NextRequest) {
   const roomInfoUrl = `https://api.live.bilibili.com/room/v1/Room/get_info?room_id=${roomId}`;
   const playInfoUrl =
     'https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo' +
-    `?room_id=${roomId}&protocol=0,1&format=0,1,2&codec=0,1&qn=10000&platform=web&ptype=8`;
+    `?room_id=${roomId}&protocol=0,1&format=0,1,2&codec=0,1&qn=${PREFERRED_QN}&platform=web&ptype=8`;
 
   try {
     const [infoData, playInfoData] = await Promise.all([
@@ -237,7 +252,8 @@ export async function GET(request: NextRequest) {
     }
 
     const flvCandidates = extractStreamCandidates(playInfoData.data, 'http_stream', 'flv');
-    const hlsUrls = extractHlsUrls(playInfoData.data);
+    const hlsCandidates = extractHlsCandidates(playInfoData.data);
+    const hlsUrls = hlsCandidates.map(candidate => candidate.url);
 
     if (!flvCandidates[0]?.url && !hlsUrls[0]) {
       return NextResponse.json(
@@ -258,6 +274,7 @@ export async function GET(request: NextRequest) {
         flv_url: flvCandidates[0]?.url || '',
         hls_url: hlsUrls[0] ?? null,
         hls_backup_urls: hlsUrls.slice(1),
+        hls_candidates: hlsCandidates,
         backup_urls: flvCandidates.slice(1).map((candidate) => candidate.url),
         quality: playInfoData.data?.playurl_info?.playurl?.g_qn_desc ?? [],
         timestamp: Date.now(),
