@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAudioStore } from '@/store/audioStore';
 import { createHlsRecoveryController } from '@/lib/hls-recovery';
 import { createPauseOriginTracker, nextPlayIntent } from '@/lib/media-intent';
-import { probeHlsCandidate, type HlsCandidate } from '@/lib/hls-candidates';
+import { orderHlsCandidates, probeHlsCandidate, type HlsCandidate } from '@/lib/hls-candidates';
 import { waitForMediaReady } from '@/lib/media-load';
 import { Station } from '@/lib/stations';
 import Hls, { type ErrorData } from 'hls.js';
@@ -274,7 +274,14 @@ export function useAudioPlayer() {
           hlsRef.current = null;
         }
 
-        const hls = new Hls({ enableWorker: true, maxBufferLength: 30 });
+        const hls = new Hls({
+          enableWorker: true,
+          maxBufferLength: 30,
+          // B 站 fMP4 通常每片仅 1 秒，默认紧跟 3 片容易耗尽缓冲。
+          // 电台不要求实时互动，保留 5 片的直播延迟以吸收短暂网络抖动。
+          // 这是播放位置的目标，不是额外等待 5 秒才开始播放。
+          liveSyncDurationCount: 5,
+        });
         // Own the instance before awaiting initialization, so pause/switch can
         // destroy it even while its first manifest request is still pending.
         hlsRef.current = hls;
@@ -428,12 +435,14 @@ export function useAudioPlayer() {
         console.log(`[Player] Trying ${hlsUrls.length} HLS stream candidate(s)`);
         let hlsLoaded = false;
         const metadata = new Map(data.hls_candidates?.map(candidate => [candidate.url, candidate]));
-        const preferred = await probeHlsCandidate(
-          hlsUrls.map(url => metadata.get(url) ?? { url }), signal,
-        );
+        const candidates = orderHlsCandidates(hlsUrls.map(url => metadata.get(url) ?? { url }));
+        const preferred = await probeHlsCandidate(candidates, signal);
         // Keep the original candidates if the preferred player fails to
         // initialize, or if JS probes fail but native HLS can still load.
-        const orderedUrls = preferred ? [preferred, ...hlsUrls.filter(url => url !== preferred)] : hlsUrls;
+        // Retain format diversity on fallback too: a timed-out probe must not
+        // put every slow TS/HEVC variant ahead of the fMP4 AVC player again.
+        const fallbackUrls = candidates.map(candidate => candidate.url);
+        const orderedUrls = preferred ? [preferred, ...fallbackUrls.filter(url => url !== preferred)] : fallbackUrls;
 
         for (const hlsUrl of orderedUrls) {
           hlsLoaded = await loadBilibiliHls(hlsUrl);
